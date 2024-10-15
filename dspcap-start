@@ -1,12 +1,12 @@
 #!/bin/bash
-set -e 
+# https://github.com/tdihp/dspcap
+set -e
 set -o pipefail
-STARTTIME=$(date -u +%Y-%m-%dT%H:%M)
+STARTTIME=$(date +%s)
 PIDFILE=/var/run/dspcap.pid
 NAMESPACE=default
-IMAGE=alpine:3.15
-# IMAGE=mcr.microsoft.com/dotnet/runtime-deps:6.0
-TCPDUMP_ARGS="-i any -s 100 -C 100"
+IMAGE="alpine:3.20" # only used for nsenter
+TCPDUMP_ARGS="-i any -s 1024"
 
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
@@ -32,15 +32,18 @@ spec:
       - name: tcpdump
         command:
         - nsenter
-        - --mount=/proc/1/ns/mnt
         - --
-        - bash
+        - sh
         - -xc
         - |
+          apk add curl
+          mkdir /root/bin
+          curl -fsSL https://github.com/mozillazg/ptcpdump/releases/download/v0.24.0/ptcpdump_0.24.0_linux_amd64.tar.gz | tar --directory=/root/bin/ -xzf - ptcpdump
+          export PATH="/root/bin:\$PATH"
           mkdir -p /tmp/dspcap
           chmod 777 /tmp/dspcap
           echo "starting pcap"
-          tcpdump $TCPDUMP_ARGS -w "/tmp/dspcap/$STARTTIME.\$(hostname).pcap" &
+          ptcpdump $TCPDUMP_ARGS -w "/tmp/dspcap/$STARTTIME.\$(hostname).pcap" &
           echo \$! >$PIDFILE
           wait
           rm $PIDFILE
